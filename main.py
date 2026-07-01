@@ -1,10 +1,19 @@
-from PySide6.QtWidgets import QApplication, QLabel
 import sys
 
-app = QApplication(sys.argv)
+from PySide6.QtWidgets import QApplication
 
-label = QLabel("SAGP Membership Manager")
-label.resize(500, 120)
-label.show()
+from views.main_window import MainWindow
 
-sys.exit(app.exec())
+
+def main():
+
+    app = QApplication(sys.argv)
+
+    window = MainWindow()
+    window.show()
+
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
