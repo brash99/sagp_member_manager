@@ -7,10 +7,12 @@ def display(value):
 
 class MemberTableModel(QAbstractTableModel):
     headers = [
-        "Display Name",
+        "First Name",
+        "Last Name",
         "Institution",
         "Membership Status",
         "Primary Email",
+        "Original Code",
     ]
 
     def __init__(self, members):
@@ -57,21 +59,27 @@ class MemberTableModel(QAbstractTableModel):
         col = index.column()
 
         if col == 0:
-            return display(member.display_name)
+            return display(member.first_name)
         if col == 1:
-            return display(member.institution)
+            return display(member.last_name)
         if col == 2:
-            return display(member.membership_status)
+            return display(member.institution)
         if col == 3:
+            return display(member.membership_status)
+        if col == 4:
             return display(member.primary_email)
+        if col == 5:
+            return display(member.original_membership_code)
         return None
 
     def sort(self, column, order=Qt.AscendingOrder):
         key_functions = {
-            0: lambda m: (m.display_name or '').lower(),
-            1: lambda m: (m.institution or '').lower(),
-            2: lambda m: (m.membership_status or '').lower(),
-            3: lambda m: (m.primary_email or '').lower(),
+            0: lambda m: (m.first_name or '').lower(),
+            1: lambda m: (m.last_name or '').lower(),
+            2: lambda m: (m.institution or '').lower(),
+            3: lambda m: (m.membership_status or '').lower(),
+            4: lambda m: (m.primary_email or '').lower(),
+            5: lambda m: (m.original_membership_code or '').lower(),
         }
         key_function = key_functions.get(column)
         if key_function is None:

@@ -13,7 +13,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "database",
         nargs="?",
-        default="../sagp_member_db/output/sagp_members.db",
+        default="output/sagp_members.db",
         help="Path to the canonical App 2 SQLite database",
     )
     return parser.parse_args(argv)

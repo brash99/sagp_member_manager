@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
 
         self.member_table.setAlternatingRowColors(True)
         self.member_table.setSortingEnabled(True)
+        self.member_table.sortByColumn(1, Qt.AscendingOrder)
         self.member_table.setSelectionBehavior(QTableView.SelectRows)
         self.member_table.setSelectionMode(QTableView.SingleSelection)
 
@@ -114,13 +115,6 @@ class MainWindow(QMainWindow):
         self.last_name = QLineEdit()
         self.institution = QLineEdit()
         self.primary_email = QLineEdit()
-
-        # Give commonly long fields more room.
-        self.display_name.setMinimumWidth(450)
-        self.first_name.setMinimumWidth(250)
-        self.last_name.setMinimumWidth(250)
-        self.institution.setMinimumWidth(450)
-        self.primary_email.setMinimumWidth(450)
 
         self.membership_status = QComboBox()
         self.membership_status.addItems(
