@@ -8,15 +8,35 @@ from database import Database
 from views.main_window import MainWindow
 
 
+def default_database_path():
+    """Prefer the App 2 database in the sibling sagp_member_db submodule."""
+    candidates = [
+        Path("../sagp_member_db/output/sagp_members.db"),
+        Path("output/sagp_members.db"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return str(candidates[0])
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="SAGP Membership Manager")
     parser.add_argument(
         "database",
         nargs="?",
-        default="output/sagp_members.db",
+        default=None,
         help="Path to the canonical App 2 SQLite database",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--db",
+        dest="database_option",
+        default=None,
+        help="Path to the canonical App 2 SQLite database",
+    )
+    args = parser.parse_args(argv)
+    args.database = args.database_option or args.database or default_database_path()
+    return args
 
 
 def main(argv=None):

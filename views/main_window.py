@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QTableView,
     QStatusBar,
     QHeaderView,
+    QGroupBox,
+    QCheckBox,
 )
 
 
@@ -28,6 +30,21 @@ def clean_text(value):
     """Convert blank UI text back to NULL-friendly Python values."""
     value = value.strip()
     return value if value else None
+
+
+def status_filter_label(value):
+    """Human-readable label used by the membership-status filter UI."""
+    value = display(value).strip()
+    return value if value else "(No Status)"
+
+
+MEMBERSHIP_STATUS_OPTIONS = [
+    "Current Member",
+    "Past Member",
+    "Executive and Donors",
+    "Unknown A",
+    "Unknown B",
+]
 
 
 class MainWindow(QMainWindow):
@@ -90,6 +107,34 @@ class MainWindow(QMainWindow):
         search_layout.addWidget(self.clear_button)
         main_layout.addLayout(search_layout)
 
+        status_group = QGroupBox("Membership Types")
+        status_layout = QHBoxLayout(status_group)
+        self.status_filter_checkboxes = {}
+
+        # Build filters from the database content so App 3 remains usable even
+        # if an older/stale database has blank or unexpected status values.
+        observed_statuses = {status_filter_label(m.membership_status) for m in self.members}
+        preferred_statuses = [
+            status for status in MEMBERSHIP_STATUS_OPTIONS if status in observed_statuses
+        ]
+        extra_statuses = sorted(
+            status for status in observed_statuses
+            if status not in MEMBERSHIP_STATUS_OPTIONS
+        )
+
+        for status in [*preferred_statuses, *extra_statuses]:
+            checkbox = QCheckBox(status)
+            checkbox.setChecked(True)
+            self.status_filter_checkboxes[status] = checkbox
+            status_layout.addWidget(checkbox)
+
+        self.all_statuses_button = QPushButton("All")
+        self.no_statuses_button = QPushButton("None")
+        status_layout.addStretch(1)
+        status_layout.addWidget(self.all_statuses_button)
+        status_layout.addWidget(self.no_statuses_button)
+        main_layout.addWidget(status_group)
+
         splitter = QSplitter(Qt.Horizontal)
 
         self.member_table = QTableView()
@@ -117,18 +162,7 @@ class MainWindow(QMainWindow):
         self.primary_email = QLineEdit()
 
         self.membership_status = QComboBox()
-        self.membership_status.addItems(
-            [
-                "",
-                "Current Paid Member",
-                "Current Unpaid Member",
-                "Past Member",
-                "Associate Member",
-                "Executive Member",
-                "Honorary Member",
-                "Unknown",
-            ]
-        )
+        self.membership_status.addItems(["", *MEMBERSHIP_STATUS_OPTIONS])
 
         self.region = QComboBox()
         self.region.addItems(["", "PA", "NJ", "NY", "Canada", "World", "Other"])
@@ -178,6 +212,10 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         self.search_edit.textChanged.connect(self._refresh_member_list)
         self.clear_button.clicked.connect(self.search_edit.clear)
+        self.all_statuses_button.clicked.connect(self._select_all_status_filters)
+        self.no_statuses_button.clicked.connect(self._clear_all_status_filters)
+        for checkbox in self.status_filter_checkboxes.values():
+            checkbox.stateChanged.connect(self._refresh_member_list)
         self.member_table.selectionModel().currentRowChanged.connect(
             self._on_current_row_changed
         )
@@ -196,10 +234,43 @@ class MainWindow(QMainWindow):
         self.membership_status.currentTextChanged.connect(self._mark_details_dirty)
         self.region.currentTextChanged.connect(self._mark_details_dirty)
 
+    def _selected_membership_statuses(self):
+        return {
+            status
+            for status, checkbox in self.status_filter_checkboxes.items()
+            if checkbox.isChecked()
+        }
+
+    def _select_all_status_filters(self):
+        self._set_all_status_filters(True)
+
+    def _clear_all_status_filters(self):
+        self._set_all_status_filters(False)
+
+    def _set_all_status_filters(self, checked):
+        blockers = [
+            QSignalBlocker(checkbox)
+            for checkbox in self.status_filter_checkboxes.values()
+        ]
+        try:
+            for checkbox in self.status_filter_checkboxes.values():
+                checkbox.setChecked(checked)
+        finally:
+            del blockers
+        self._refresh_member_list()
+
     def _refresh_member_list(self):
         text = self.search_edit.text()
-        self.members = self.db.search_members(text)
+        members = self.db.search_members(text)
+        selected_statuses = self._selected_membership_statuses()
+
+        self.members = [
+            member
+            for member in members
+            if status_filter_label(member.membership_status) in selected_statuses
+        ]
         self.model.set_members(self.members)
+        self.member_table.sortByColumn(1, Qt.AscendingOrder)
         self.statusBar().showMessage(
             f"Showing {len(self.members):,} matching members"
         )
