@@ -1,18 +1,36 @@
+import argparse
 import sys
+from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from database import Database
 from views.main_window import MainWindow
 
 
-def main():
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="SAGP Membership Manager")
+    parser.add_argument(
+        "database",
+        nargs="?",
+        default="output/sagp_members.db",
+        help="Path to the canonical App 2 SQLite database",
+    )
+    return parser.parse_args(argv)
 
-    app = QApplication(sys.argv)
 
-    window = MainWindow()
+def main(argv=None):
+    args = parse_args(argv)
+
+    app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
+
+    db = Database(Path(args.database))
+    window = MainWindow(db)
     window.show()
 
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    db.close()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
