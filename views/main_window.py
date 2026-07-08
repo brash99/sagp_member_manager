@@ -1,6 +1,9 @@
 from PySide6.QtCore import Qt, QSignalBlocker
 from models.member_table_model import MemberTableModel
 from models.member import Member
+import csv
+from datetime import datetime
+
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -19,6 +22,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QGroupBox,
     QCheckBox,
+    QApplication,
+    QFileDialog,
 )
 
 
@@ -209,6 +214,48 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 2)
         main_layout.addWidget(splitter)
 
+        audience_group = QGroupBox("Audiences / Mailing Lists")
+        audience_layout = QVBoxLayout(audience_group)
+
+        audience_controls = QHBoxLayout()
+
+        self.audience_preset = QComboBox()
+        self.audience_preset.addItems([
+            "Current filtered view",
+            "All members",
+            "Current paid members",
+            "Executive and Board Members",
+            "Expired members",
+            "Last paid in selected year",
+            "Expired before selected year",
+        ])
+        audience_controls.addWidget(QLabel("Audience:"))
+        audience_controls.addWidget(self.audience_preset)
+
+        self.audience_year = QComboBox()
+        current_year = datetime.now().year
+        self.audience_year.addItems([str(year) for year in range(current_year - 10, current_year + 2)])
+        self.audience_year.setCurrentText(str(current_year - 1))
+        audience_controls.addWidget(QLabel("Year:"))
+        audience_controls.addWidget(self.audience_year)
+
+        self.generate_audience_button = QPushButton("Generate Audience")
+        self.copy_audience_button = QPushButton("Copy Email Addresses")
+        self.export_audience_button = QPushButton("Export CSV")
+
+        audience_controls.addWidget(self.generate_audience_button)
+        audience_controls.addWidget(self.copy_audience_button)
+        audience_controls.addWidget(self.export_audience_button)
+
+        audience_layout.addLayout(audience_controls)
+
+        self.audience_preview = QPlainTextEdit()
+        self.audience_preview.setReadOnly(True)
+        self.audience_preview.setPlaceholderText("Generated audience will appear here.")
+        audience_layout.addWidget(self.audience_preview)
+
+        main_layout.addWidget(audience_group)
+
     def _connect_signals(self):
         self.search_edit.textChanged.connect(self._refresh_member_list)
         self.clear_button.clicked.connect(self.search_edit.clear)
@@ -233,6 +280,10 @@ class MainWindow(QMainWindow):
         self.notes.textChanged.connect(self._mark_details_dirty)
         self.membership_status.currentTextChanged.connect(self._mark_details_dirty)
         self.region.currentTextChanged.connect(self._mark_details_dirty)
+
+        self.generate_audience_button.clicked.connect(self._generate_audience)
+        self.copy_audience_button.clicked.connect(self._copy_audience_emails)
+        self.export_audience_button.clicked.connect(self._export_audience_csv)
 
     def _selected_membership_statuses(self):
         return {
@@ -395,6 +446,135 @@ class MainWindow(QMainWindow):
             created_at=member.created_at,
             updated_at=member.updated_at,
         )
+
+
+    def _member_email(self, member):
+        return display(member.primary_email or member.secondary_email).strip()
+
+    def _member_last_paid_year(self, member):
+        try:
+            return int(member.last_paid_year)
+        except (TypeError, ValueError):
+            return None
+
+    def _audience_members(self):
+        preset = self.audience_preset.currentText()
+        all_members = self.db.list_members()
+        current_year = datetime.now().year
+
+        if preset == "Current filtered view":
+            candidates = self.members
+        elif preset == "All members":
+            candidates = all_members
+        elif preset == "Current paid members":
+            candidates = [
+                member for member in all_members
+                if self._member_last_paid_year(member) is not None
+                and self._member_last_paid_year(member) >= current_year
+            ]
+        elif preset == "Executive and Board Members":
+            candidates = [
+                member for member in all_members
+                if display(member.membership_status) == "Executive and Donors"
+            ]
+        elif preset == "Expired members":
+            candidates = [
+                member for member in all_members
+                if self._member_last_paid_year(member) is not None
+                and self._member_last_paid_year(member) < current_year
+            ]
+        elif preset == "Last paid in selected year":
+            year = int(self.audience_year.currentText())
+            candidates = [
+                member for member in all_members
+                if self._member_last_paid_year(member) == year
+            ]
+        elif preset == "Expired before selected year":
+            year = int(self.audience_year.currentText())
+            candidates = [
+                member for member in all_members
+                if self._member_last_paid_year(member) is not None
+                and self._member_last_paid_year(member) < year
+            ]
+        else:
+            candidates = []
+
+        return [
+            member for member in candidates
+            if self._member_email(member)
+        ]
+
+    def _generate_audience(self):
+        members = self._audience_members()
+        emails = [self._member_email(member) for member in members]
+
+        lines = [
+            f"Audience: {self.audience_preset.currentText()}",
+            f"Members with email addresses: {len(members):,}",
+            "",
+            "Email list:",
+            "; ".join(emails),
+            "",
+            "Preview:",
+        ]
+
+        for member in members:
+            lines.append(
+                f"- {display(member.display_name)} <{self._member_email(member)}> "
+                f"({display(member.institution)})"
+            )
+
+        self.audience_preview.setPlainText("\n".join(lines))
+        self.statusBar().showMessage(
+            f"Generated audience with {len(members):,} email addresses", 5000
+        )
+
+    def _copy_audience_emails(self):
+        members = self._audience_members()
+        emails = [self._member_email(member) for member in members]
+        QApplication.clipboard().setText(", ".join(emails))
+        self.statusBar().showMessage(
+            f"Copied {len(emails):,} email addresses to clipboard", 5000
+        )
+
+    def _export_audience_csv(self):
+        members = self._audience_members()
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Audience CSV",
+            "sagp_audience.csv",
+            "CSV Files (*.csv)",
+        )
+
+        if not filename:
+            return
+
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "display_name",
+                "email",
+                "institution",
+                "membership_status",
+                "last_paid_year",
+                "region",
+            ])
+
+            for member in members:
+                writer.writerow([
+                    display(member.display_name),
+                    self._member_email(member),
+                    display(member.institution),
+                    display(member.membership_status),
+                    display(member.last_paid_year),
+                    display(member.region),
+                ])
+
+        self.statusBar().showMessage(
+            f"Exported {len(members):,} audience members to {filename}", 5000
+        )
+
 
     def _save_current_member(self):
         updated_member = self._member_from_form()

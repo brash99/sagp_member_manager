@@ -38,7 +38,6 @@ dist/
 
 # User settings
 *.ini
-*.json
 
 # Local databases for testing
 *.db
