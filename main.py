@@ -9,16 +9,24 @@ from views.main_window import MainWindow
 
 
 def default_database_path():
-    """Prefer the App 2 database in the sibling sagp_member_db submodule."""
+    """Use the Membership Manager live operational database by default.
+
+    sagp_member_import creates a bootstrap/import database from historical CSVs.
+    Once sagp_member_manager is used to edit records, the manager database is
+    the authoritative operational database.
+    """
     candidates = [
-        Path("../sagp_member_db/output/sagp_members.db"),
+        Path("sagp_member_manager/output/sagp_members.db"),
         Path("output/sagp_members.db"),
+        Path("sagp_member_import/output/sagp_members.db"),
+        Path("../sagp_member_import/output/sagp_members.db"),
+        Path("sagp_member_db/output/sagp_members.db"),      # compatibility alias
+        Path("../sagp_member_db/output/sagp_members.db"),   # compatibility alias
     ]
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
     return str(candidates[0])
-
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="SAGP Membership Manager")

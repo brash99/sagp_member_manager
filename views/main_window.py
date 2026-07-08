@@ -4,6 +4,8 @@ from models.member import Member
 import csv
 from datetime import datetime
 
+from sagp_core import Audience, Recipient, save_audience
+
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -242,10 +244,12 @@ class MainWindow(QMainWindow):
         self.generate_audience_button = QPushButton("Generate Audience")
         self.copy_audience_button = QPushButton("Copy Email Addresses")
         self.export_audience_button = QPushButton("Export CSV")
+        self.export_audience_json_button = QPushButton("Export Audience JSON")
 
         audience_controls.addWidget(self.generate_audience_button)
         audience_controls.addWidget(self.copy_audience_button)
         audience_controls.addWidget(self.export_audience_button)
+        audience_controls.addWidget(self.export_audience_json_button)
 
         audience_layout.addLayout(audience_controls)
 
@@ -284,6 +288,7 @@ class MainWindow(QMainWindow):
         self.generate_audience_button.clicked.connect(self._generate_audience)
         self.copy_audience_button.clicked.connect(self._copy_audience_emails)
         self.export_audience_button.clicked.connect(self._export_audience_csv)
+        self.export_audience_json_button.clicked.connect(self._export_audience_json)
 
     def _selected_membership_statuses(self):
         return {
@@ -460,42 +465,45 @@ class MainWindow(QMainWindow):
     def _audience_members(self):
         preset = self.audience_preset.currentText()
         all_members = self.db.list_members()
-        current_year = datetime.now().year
+        selected_year = int(self.audience_year.currentText())
 
         if preset == "Current filtered view":
             candidates = self.members
+
         elif preset == "All members":
             candidates = all_members
+
         elif preset == "Current paid members":
             candidates = [
                 member for member in all_members
-                if self._member_last_paid_year(member) is not None
-                and self._member_last_paid_year(member) >= current_year
+                if display(member.membership_status) == "Current Member"
             ]
+
         elif preset == "Executive and Board Members":
             candidates = [
                 member for member in all_members
                 if display(member.membership_status) == "Executive and Donors"
             ]
+
         elif preset == "Expired members":
             candidates = [
                 member for member in all_members
-                if self._member_last_paid_year(member) is not None
-                and self._member_last_paid_year(member) < current_year
+                if display(member.membership_status) == "Past Member"
             ]
+
         elif preset == "Last paid in selected year":
-            year = int(self.audience_year.currentText())
             candidates = [
                 member for member in all_members
-                if self._member_last_paid_year(member) == year
+                if self._member_last_paid_year(member) == selected_year
             ]
+
         elif preset == "Expired before selected year":
-            year = int(self.audience_year.currentText())
             candidates = [
                 member for member in all_members
                 if self._member_last_paid_year(member) is not None
-                and self._member_last_paid_year(member) < year
+                and self._member_last_paid_year(member) < selected_year
             ]
+
         else:
             candidates = []
 
@@ -573,6 +581,84 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage(
             f"Exported {len(members):,} audience members to {filename}", 5000
+        )
+
+
+    def _build_audience_object(self):
+        members = self._audience_members()
+        preset = self.audience_preset.currentText()
+
+        criteria = {
+            "preset": preset,
+            "year": self.audience_year.currentText(),
+            "search_text": self.search_edit.text(),
+            "selected_membership_statuses": sorted(self._selected_membership_statuses()),
+        }
+
+        recipients = []
+        for member in members:
+            recipients.append(
+                Recipient(
+                    person_id=display(member.person_id),
+                    name=display(member.display_name),
+                    email=self._member_email(member),
+                    membership_status=display(member.membership_status),
+                    tags=[
+                        f"preset:{preset}",
+                    ],
+                    eligibility_notes=(
+                        f"last_paid_year={display(member.last_paid_year)}; "
+                        f"region={display(member.region)}; "
+                        f"institution={display(member.institution)}"
+                    ),
+                )
+            )
+
+        return Audience(
+            name=preset,
+            description=f"Audience generated from Membership Manager preset: {preset}",
+            criteria=criteria,
+            recipients=recipients,
+        )
+
+    def _export_audience_json(self):
+        try:
+            audience = self._build_audience_object()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Audience Export Failed",
+                f"Could not build Audience object:\n\n{exc}",
+            )
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Audience JSON",
+            f"{audience.audience_id}.json",
+            "JSON Files (*.json)",
+        )
+
+        if not filename:
+            return
+
+        try:
+            path = save_audience(audience, Path(filename).parent)
+            requested = Path(filename)
+            if path != requested:
+                path.rename(requested)
+                path = requested
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Audience Export Failed",
+                f"Could not save Audience JSON:\n\n{exc}",
+            )
+            return
+
+        self.statusBar().showMessage(
+            f"Exported Audience JSON with {len(audience.recipients):,} recipients to {path}",
+            5000,
         )
 
 

@@ -41,3 +41,8 @@ dist/
 
 # Local databases for testing
 *.db
+
+# Live operational database
+output/*.db
+output/*.db-shm
+output/*.db-wal
